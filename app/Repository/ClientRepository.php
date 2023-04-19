@@ -19,7 +19,7 @@ class ClientRepository implements ClientInterface
             $financialInstituitions = $this->getInstInformation();
             $this->simuateCreditOffer($financialInstituitions);
             
-            return $this->finalResult;
+            return $this->finalResult; 
 
         }catch(Throwable $error){
             throw $error;
