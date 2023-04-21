@@ -11,6 +11,7 @@ use Throwable;
 class ClientRepository implements ClientInterface
 { 
     private $finalResult = [];
+    private $allValues = [];
     private $cpf;
     private $offerModel;
 
@@ -30,7 +31,7 @@ class ClientRepository implements ClientInterface
             
             $financialInstituitions = $this->getInstInformation();
             $this->simuateCreditOffer($financialInstituitions);
-            
+            dd($this->allValues);
             return $this->finalResult; 
 
         }catch(Throwable $error){
@@ -60,6 +61,9 @@ class ClientRepository implements ClientInterface
         foreach($instituitions['instituicoes'] as $value){
             $this->startCalculate($value['id'], $value['nome'], $value['modalidades']);
         }
+
+        $this->calculateOffer();
+        die;
     }
 
     /**
@@ -79,10 +83,11 @@ class ClientRepository implements ClientInterface
 
             foreach ($modality as $key => $values) {
                 $params['codModalidade'] = $values['cod'];
-                $response = Http::post(Utils::URL_OFFER, $params);
-                $this->calculateOffer($response->json(), $instituitionName, $values['nome']);
+                $response = Http::post(Utils::URL_OFFER, $params)->json();
+                $response['nomeInstituicao'] = $instituitionName;
+                $response['nomeModalidade'] = $values['nome'];
+                $this->allValues[] = $response;
             }
-            
         }catch(Throwable $error){
             throw $error;
         }
@@ -94,42 +99,66 @@ class ClientRepository implements ClientInterface
     * @param String $instituitionName
     * @param String $modalityName
     */
-    private function calculateOffer(array $offer, string $instituitionName, string $modalityName){
+    private function calculateOffer(){
         
-        $valueMinToPay = $offer['valorMin'];
-        $valueMaxToPay = $offer['valorMax'];
+        $result = [];
 
-        for($i = 0; $i < $offer['QntParcelaMin']; $i++){
-            $valueMinToPay += $valueMinToPay * $offer['jurosMes'];    
-        }
+        foreach ($this->allValues as $key => $value) {
+            $valueMinToPay = $value['valorMin'];
+            $timeToPayMin = $value['QntParcelaMin'];
+            
+            $valueMaxToPay = $value['valorMax'];
+            $timeToPayMax = $value['QntParcelaMax'];
+            
+            $tax = $value['jurosMes'];
 
-        for($i = 0; $i < $offer['QntParcelaMax']; $i++){
-            $valueMaxToPay += $valueMaxToPay * $offer['jurosMes'];    
-        }
+            //valueMinTimeMin
+            $result[0]['valorAPagar'] = number_format((float)($valueMinToPay + (($valueMinToPay * $tax) * $timeToPayMin)), 2, '.', '');
+            $result[0]['instituicaoFinanceira'] = $value['nomeInstituicao'];
+            $result[0]['modalidadeCredito'] = $value['nomeModalidade'];
+            $result[0]['valorSolicitado'] =  $valueMinToPay;
+            $result[0]['taxaJuros'] = $tax;
+            $result[0]['qntParcelas'] = $timeToPayMin;
+            
+            //valueMinTimeMax
+            $result[]['valorAPagar'] = number_format((float)($valueMinToPay + (($valueMinToPay * $tax) * $timeToPayMax)), 2, '.', '');
+            $result[]['instituicaoFinanceira'] = $value['nomeInstituicao'];
+            $result[]['modalidadeCredito'] = $value['nomeModalidade'];
+            $result[]['valorSolicitado'] =  $valueMinToPay;
+            $result[]['taxaJuros'] = $tax;
+            $result[]['qntParcelas'] = $timeToPayMax;
 
-        $resultToPay = $valueMaxToPay;
-        $resultAsked = $offer['valorMax'];
-        $timesToPay = $offer['QntParcelaMax'];
-        
-        if($valueMinToPay < $valueMaxToPay){
-            $resultToPay = $valueMinToPay;
-            $resultAsked = $offer['valorMin'];
-            $timesToPay = $offer['QntParcelaMin'];
+            //valueMaxTimeMin
+            $result['valorAPagar'] =  number_format((float)($valueMaxToPay + (($valueMinToPay * $tax) * $timeToPayMin)), 2, '.', '');
+            $result['instituicaoFinanceira'] = $value['nomeInstituicao'];
+            $result['modalidadeCredito'] = $value['nomeModalidade'];
+            $result['valorSolicitado'] =  $valueMaxToPay;
+            $result['taxaJuros'] = $tax;
+            $result['qntParcelas'] = $timeToPayMin;
+
+            //valueMaxTimeMax
+            $result['valueMaxTimeMax'][$key]['valorAPagar'] =  number_format((float)($valueMaxToPay + (($valueMinToPay * $tax) * $timeToPayMax)), 2, '.', '');
+            $result['valueMaxTimeMax'][$key]['instituicaoFinanceira'] =  $value['nomeInstituicao'];
+            $result['valueMaxTimeMax'][$key]['modalidadeCredito'] =  $value['nomeModalidade'];
+            $result['valueMaxTimeMax'][$key]['valorSolicitado'] =  $valueMaxToPay;
+            $result['valueMaxTimeMax'][$key]['taxaJuros'] = $tax;
+            $result['valueMaxTimeMax'][$key]['qntParcelas'] = $timeToPayMax;
+
         }
+        $this->allValues = $result;
+        dd($this->allValues);
+    }
+
+    private function getTheBest(){
         
-        $resultToPay = number_format((float)$resultToPay, 2, '.', '');
-        $resultAsked = number_format((float)$resultAsked, 2, '.', '');
+        $menorValor = 0;
         
-        $this->finalResult[] = [
-            'instituicaoFinanceira' => $instituitionName,
-            'modalidadeCredito' => $modalityName,
-            'valorAPagar' => $resultToPay,
-            'valorSolicitado' => $resultAsked,
-            'taxaJuros' => $offer['jurosMes'],
-            'qntParcelas' => $timesToPay
-        ];
-        
-        $this->finalResult = collect($this->finalResult)->sortBy('valorAPagar')->toArray();
-        $this->offerModel->create($instituitionName, $modalityName, $resultToPay,  $resultAsked, $offer['jurosMes'], $timesToPay);
+        foreach ($this->allValues as $key => $types) {
+            
+            dump($types);
+            foreach ($types as $key => $value) {
+                dd($value, $this->allValues);
+            }
+        }
     }
 }
